@@ -253,6 +253,12 @@ jobs:
       # touch it), so build the project directly and let its ProjectReference
       # pull in lib_pcre, which the patch does configure for ARM64.
       - name: Build
+        env:
+          # Git Bash rewrites arguments that begin with "/" into Windows paths,
+          # which turns msbuild's /m into M:/ and eats the slash on every /p:.
+          # "*" turns that conversion off; MSBuild is also given "-"/"-p:" forms
+          # below so the build is correct even if this is ignored.
+          MSYS2_ARG_CONV_EXCL: "*"
         run: |
           set -euo pipefail
           # Prefer PATH, but fall back to the path the toolchain step discovered.
@@ -270,13 +276,13 @@ jobs:
             echo "PATH=$PATH"
             exit 1
           fi
-          echo "msbuild   -> $(command -v "$msbuild_cmd" || echo "$msbuild_cmd")"
+          echo "msbuild   -> $msbuild_cmd"
           echo "armasm64  -> $(command -v armasm64)"
-          "$msbuild_cmd" AutoHotkeyx.vcxproj /m \
-            /p:Configuration=Release \
-            /p:Platform=ARM64 \
-            /p:RawAhkVersion="${{ steps.meta.outputs.version }}" \
-            /p:AhkVersionN="${{ steps.meta.outputs.numbers }}"
+          "$msbuild_cmd" AutoHotkeyx.vcxproj -m \
+            -p:Configuration=Release \
+            -p:Platform=ARM64 \
+            -p:RawAhkVersion="${{ steps.meta.outputs.version }}" \
+            -p:AhkVersionN="${{ steps.meta.outputs.numbers }}"
 
       # Guards against publishing an x64 tree under an ARM64 name, and against a
       # mis-plumbed version resource.
