@@ -183,34 +183,82 @@ jobs:
           echo "zip_url=${zip_url}" >> "$GITHUB_OUTPUT"
           echo "version=${version}, FILEVERSION=${numbers}"
 
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3
-
-      # The patched project shells out to armasm64 by name, so its directory has
-      # to be on PATH. setup-msbuild only adds the host-native tools directory.
-      - name: Put the ARM64 assembler on PATH
+      # Resolve the toolchain ourselves rather than through setup-msbuild: that
+      # action did not leave msbuild on PATH on this image. armasm64 also has to
+      # be on PATH by name, because the patched project shells out to it, and it
+      # lives in the ARM64 host tools directory that nothing adds by default.
+      - name: Locate the MSVC ARM64 toolchain
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $found = Get-ChildItem `
-            -Path "$env:ProgramFiles\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\*\arm64\armasm64.exe" `
-            -ErrorAction SilentlyContinue
-          if (-not $found) {
-            throw "armasm64.exe not found; this runner image is missing the ARM64 build tools"
+
+          # vswhere is a 32-bit tool, so it normally lives under Program
+          # Files (x86); fall back to Program Files just in case.
+          $vswhere = @(
+            (Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe")
+            (Join-Path $env:ProgramFiles "Microsoft Visual Studio\Installer\vswhere.exe")
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $vswhere) {
+            throw "vswhere.exe not found under Program Files; no Visual Studio on this image"
           }
-          $found[0].Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "armasm64: $($found[0].FullName)"
+
+          $install = & $vswhere -latest -products * `
+            -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $install) {
+            throw "vswhere found no Visual Studio installation providing MSBuild"
+          }
+          $install = $install | Select-Object -First 1
+          Write-Host "Visual Studio: $install"
+
+          $msbuild = Join-Path $install "MSBuild\Current\Bin\MSBuild.exe"
+          if (-not (Test-Path $msbuild)) {
+            throw "MSBuild.exe not found at $msbuild"
+          }
+
+          $toolset = Get-ChildItem -Path (Join-Path $install "VC\Tools\MSVC") `
+            -Directory -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1
+          if (-not $toolset) {
+            throw "no MSVC toolset under $install\VC\Tools\MSVC"
+          }
+
+          $arm64Bin = Get-ChildItem -Path (Join-Path $toolset.FullName "bin\*\arm64") `
+            -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName "armasm64.exe") } |
+            Select-Object -First 1
+          if (-not $arm64Bin) {
+            throw "armasm64.exe not found under $($toolset.FullName)\bin"
+          }
+
+          # utf8NoBOM: a BOM here would corrupt the first PATH entry.
+          @((Split-Path $msbuild), $arm64Bin.FullName) |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8NoBOM -Append
+
+          Write-Host "msbuild   : $msbuild"
+          Write-Host "armasm64  : $(Join-Path $arm64Bin.FullName 'armasm64.exe')"
+          Write-Host "toolset   : $($toolset.Name)"
 
       # The solution file has no ARM64 configuration (upstream PR #360 does not
       # touch it), so build the project directly and let its ProjectReference
       # pull in lib_pcre, which the patch does configure for ARM64.
       - name: Build
-        run: >-
-          msbuild AutoHotkeyx.vcxproj /m
-          /p:Configuration=Release
-          /p:Platform=ARM64
-          /p:RawAhkVersion="${{ steps.meta.outputs.version }}"
-          /p:AhkVersionN="${{ steps.meta.outputs.numbers }}"
+        run: |
+          set -euo pipefail
+          for tool in msbuild armasm64; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::$tool is not on PATH"
+              echo "$tool: $("$tool" 2>&1 || true)"
+              echo "PATH=$PATH"
+              exit 1
+            fi
+            echo "$tool -> $(command -v "$tool")"
+          done
+          msbuild AutoHotkeyx.vcxproj /m \
+            /p:Configuration=Release \
+            /p:Platform=ARM64 \
+            /p:RawAhkVersion="${{ steps.meta.outputs.version }}" \
+            /p:AhkVersionN="${{ steps.meta.outputs.numbers }}"
 
       # Guards against publishing an x64 tree under an ARM64 name, and against a
       # mis-plumbed version resource.
