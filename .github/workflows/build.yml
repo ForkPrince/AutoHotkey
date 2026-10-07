@@ -256,9 +256,13 @@ jobs:
         env:
           # Git Bash rewrites arguments that begin with "/" into Windows paths,
           # which turns msbuild's /m into M:/ and eats the slash on every /p:.
-          # "*" turns that conversion off; MSBuild is also given "-"/"-p:" forms
-          # below so the build is correct even if this is ignored.
           MSYS2_ARG_CONV_EXCL: "*"
+          # Pass the version as environment variables rather than -p: switches.
+          # MSBuild splits -p: values on commas, so FILEVERSION (2,0,29,0) would
+          # arrive as a bogus extra switch; an environment variable becomes a
+          # property of the same name with no escaping needed.
+          RawAhkVersion: ${{ steps.meta.outputs.version }}
+          AhkVersionN: ${{ steps.meta.outputs.numbers }}
         run: |
           set -euo pipefail
           # Prefer PATH, but fall back to the path the toolchain step discovered.
@@ -276,13 +280,13 @@ jobs:
             echo "PATH=$PATH"
             exit 1
           fi
-          echo "msbuild   -> $msbuild_cmd"
-          echo "armasm64  -> $(command -v armasm64)"
+          echo "msbuild       -> $msbuild_cmd"
+          echo "armasm64      -> $(command -v armasm64)"
+          echo "RawAhkVersion -> $RawAhkVersion"
+          echo "AhkVersionN   -> $AhkVersionN"
           "$msbuild_cmd" AutoHotkeyx.vcxproj -m \
             -p:Configuration=Release \
-            -p:Platform=ARM64 \
-            -p:RawAhkVersion="${{ steps.meta.outputs.version }}" \
-            -p:AhkVersionN="${{ steps.meta.outputs.numbers }}"
+            -p:Platform=ARM64
 
       # Guards against publishing an x64 tree under an ARM64 name, and against a
       # mis-plumbed version resource.
@@ -322,10 +326,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          # The RC sets the string FileVersion from RAW_AHK_VERSION ("2.0.29") and
+          # the numeric FILEVERSION from AhkVersionN ("2,0,29,0"), so accept
+          # either rendering of the same version.
           $expected = "${{ steps.meta.outputs.version }}"
           $actual = (Get-Item "bin\AutoHotkeyARM64.exe").VersionInfo.FileVersion
-          "FileVersion: $actual (expected $expected)"
-          if ([string]$actual -ne $expected) {
+          "FileVersion: '$actual' (expected '$expected' or '$expected.0')"
+          if ([string]$actual -ne $expected -and [string]$actual -ne "$expected.0") {
             throw "version resource is '$actual' but the release is '$expected'"
           }
 
