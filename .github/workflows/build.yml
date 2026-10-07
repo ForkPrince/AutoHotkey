@@ -1,0 +1,405 @@
+name: (Auto) Build AutoHotkey for Windows arm64
+
+on:
+  schedule:
+    # Weekly, Sunday 04:23 UTC.
+    - cron: "23 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to build (e.g. v2.0.29). Empty builds every missing release."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ahk-windows-arm64-releases
+  # Never cancel a release halfway through publishing one.
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: AutoHotkey/AutoHotkey
+  # Our release assets are named AutoHotkey_<version>_arm64.zip.
+  ASSET_PATTERN: '^AutoHotkey_.*_arm64\.zip$'
+  # Upper bound on how many releases a single run tries to build.
+  MAX_BUILDS: "3"
+
+jobs:
+  check-releases:
+    name: Check upstream releases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tags: ${{ steps.find-new.outputs.tags }}
+    steps:
+      - name: Find releases without ARM64 builds here
+        id: find-new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${REQUESTED_TAG:-}" ]]; then
+            if ! gh api "repos/${UPSTREAM_REPO}/releases/tags/${REQUESTED_TAG}" >/dev/null 2>&1; then
+              echo "::error::${REQUESTED_TAG} is not a release in ${UPSTREAM_REPO}"
+              exit 1
+            fi
+            tags=$(jq -cn --arg tag "$REQUESTED_TAG" '[$tag]')
+            echo "tags=$tags" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Newest first, drafts dropped, and restricted to plain vX.Y.Z release
+          # tags (this also skips the v2.1-alpha.* prerelease tags).
+          upstream=$(gh api --paginate "repos/${UPSTREAM_REPO}/releases?per_page=100" \
+            | jq -sc '
+                add // []
+                | map(select(.draft | not) | .tag_name)
+                | map(select(test("^v[0-9]+(\\.[0-9]+)*$")))
+                | reduce .[] as $tag ([]; if index($tag) then . else . + [$tag] end)')
+
+          # A release only counts as built once we published the ARM64 zip on it,
+          # so a hand-made release never hides a pending build.
+          built=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            | jq -sc --arg pattern "${ASSET_PATTERN}" '
+                add // []
+                | map(select(any(.assets[]?; .name | test($pattern))) | .tag_name)
+                | unique')
+
+          tags=$(jq -cn \
+            --argjson upstream "$upstream" \
+            --argjson built "$built" \
+            --argjson max "${MAX_BUILDS}" '
+              def newest($n): if length > $n then .[0:$n] else . end;
+              if ($built | length) == 0 then
+                # First run: backfill only the newest release, not the whole history.
+                [$upstream[0]] | map(select(. != null))
+              else
+                # Index of the newest upstream release we already built.
+                ([$upstream | to_entries[]
+                  | select(.value as $tag | ($built | index($tag)) != null)
+                  | .key] | first) as $i
+                | if $i == null then
+                    # Our newest build is no longer listed upstream; plain diff.
+                    (($upstream - $built) | newest($max) | reverse)
+                  else
+                    # Only what upstream published after our newest build,
+                    # oldest first so releases are published in order.
+                    (($upstream[0:$i] - $built) | newest($max) | reverse)
+                  end
+              end')
+
+          echo "Upstream releases: ${upstream}"
+          echo "Already built here: ${built}"
+          echo "Releases to build: ${tags}"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+  build-windows-arm64:
+    name: Windows arm64 (${{ matrix.tag }})
+    needs: check-releases
+    if: needs.check-releases.outputs.tags != '[]'
+    runs-on: windows-11-arm
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      # One broken tag must not hold back the tags that did build.
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJson(needs.check-releases.outputs.tags) }}
+
+    steps:
+      - name: Check out the upstream release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ matrix.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out this repository for patches
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: fork
+          persist-credentials: false
+
+      # ARM64 support is not upstream yet: https://github.com/AutoHotkey/AutoHotkey/pull/360
+      # Unlike a best-effort patch, this one is mandatory - without it there is no
+      # ARM64 project configuration and msbuild cannot produce an ARM64 binary.
+      - name: Apply the ARM64 patch
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          patches=(fork/.github/patches/*.patch)
+          if (( ${#patches[@]} == 0 )); then
+            echo "::error::no patches found in fork/.github/patches"
+            exit 1
+          fi
+          for patch in "${patches[@]}"; do
+            if ! git apply --check "$patch"; then
+              echo "::error::$patch does not apply to ${{ matrix.tag }}; AutoHotkey has moved on and the ARM64 port needs rebasing"
+              exit 1
+            fi
+            git apply "$patch"
+            echo "Applied $patch"
+          done
+          if [[ ! -f source/libx64call/arm64call.asm ]]; then
+            echo "::error::arm64call.asm missing after patching; the ARM64 assembly shim is required"
+            exit 1
+          fi
+
+      # Upstream derives the version from `git describe --dirty`, which the patch
+      # would turn into "<tag>-dirty". Pass the version properties explicitly so
+      # the binary reports exactly the released version. AhkVersionN must be
+      # passed too: the target that derives it only runs when git describe ran.
+      - name: Resolve version metadata
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REPO: ${{ env.UPSTREAM_REPO }}
+        run: |
+          set -euo pipefail
+          tag="${{ matrix.tag }}"
+          version="${tag#v}"
+          numbers=$(jq -rn --arg v "$version" '
+            ($v | split(".") | map(tonumber? // 0)) + [0, 0, 0]
+            | .[0:4] | map(tostring) | join(",")')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "numbers=${numbers}" >> "$GITHUB_OUTPUT"
+
+          # Upstream's own zip carries the help file, UX scripts, licence and the
+          # x86/x64 interpreters, all of which live outside this repository.
+          zip_url=$(gh api "repos/${UPSTREAM_REPO}/releases/tags/${tag}" \
+            --jq '.assets[] | select(.name | test("\\.zip$")) | .browser_download_url' | head -n 1)
+          if [[ -z "$zip_url" ]]; then
+            echo "::error::${tag} has no .zip release asset to package alongside the ARM64 binary"
+            exit 1
+          fi
+          echo "zip_url=${zip_url}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}, FILEVERSION=${numbers}"
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3
+
+      # The patched project shells out to armasm64 by name, so its directory has
+      # to be on PATH. setup-msbuild only adds the host-native tools directory.
+      - name: Put the ARM64 assembler on PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $found = Get-ChildItem `
+            -Path "$env:ProgramFiles\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\*\arm64\armasm64.exe" `
+            -ErrorAction SilentlyContinue
+          if (-not $found) {
+            throw "armasm64.exe not found; this runner image is missing the ARM64 build tools"
+          }
+          $found[0].Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "armasm64: $($found[0].FullName)"
+
+      # The solution file has no ARM64 configuration (upstream PR #360 does not
+      # touch it), so build the project directly and let its ProjectReference
+      # pull in lib_pcre, which the patch does configure for ARM64.
+      - name: Build
+        run: >-
+          msbuild AutoHotkeyx.vcxproj /m
+          /p:Configuration=Release
+          /p:Platform=ARM64
+          /p:RawAhkVersion="${{ steps.meta.outputs.version }}"
+          /p:AhkVersionN="${{ steps.meta.outputs.numbers }}"
+
+      # Guards against publishing an x64 tree under an ARM64 name, and against a
+      # mis-plumbed version resource.
+      - name: Verify the ARM64 binary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+          import struct
+
+          MACHINES = {0x014C: "x86", 0x8664: "x64", 0xAA64: "arm64"}
+          PE_SIGNATURE = b"PE\0\0"
+
+          def machine_of(path):
+              with path.open("rb") as fh:
+                  if fh.read(2) != b"MZ":
+                      raise ValueError("not a PE image (no MZ header)")
+                  fh.seek(0x3C)
+                  offset = struct.unpack("<I", fh.read(4))[0]
+                  fh.seek(offset)
+                  if fh.read(4) != PE_SIGNATURE:
+                      raise ValueError("not a PE image (no PE signature)")
+                  return MACHINES.get(struct.unpack("<H", fh.read(2))[0], "unknown")
+
+          exe = pathlib.Path("bin/AutoHotkeyARM64.exe")
+          if not exe.is_file():
+              raise SystemExit(f"{exe} was not produced")
+
+          arch = machine_of(exe)
+          print(f"{exe}: {arch} ({exe.stat().st_size} bytes)")
+          if arch != "arm64":
+              raise SystemExit(f"{exe} is {arch}, not arm64")
+          PY
+        shell: bash
+
+      - name: Verify the version resource
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expected = "${{ steps.meta.outputs.version }}"
+          $actual = (Get-Item "bin\AutoHotkeyARM64.exe").VersionInfo.FileVersion
+          "FileVersion: $actual (expected $expected)"
+          if ([string]$actual -ne $expected) {
+            throw "version resource is '$actual' but the release is '$expected'"
+          }
+
+      # Upstream assembles its zip on a separate branch that needs HTML Help
+      # Workshop, so reuse their published zip and substitute the ARM64 binary.
+      - name: Package
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          ZIP_URL: ${{ steps.meta.outputs.zip_url }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "$ZIP_URL" --output upstream.zip
+          python - <<'PY'
+          import os
+          import pathlib
+          import zipfile
+
+          version = os.environ["VERSION"]
+          pkg = pathlib.Path("pkg")
+          if pkg.exists():
+              for child in sorted(pkg.rglob("*"), reverse=True):
+                  child.rmdir() if child.is_dir() else child.unlink()
+              pkg.rmdir()
+          pkg.mkdir()
+
+          with zipfile.ZipFile("upstream.zip") as src:
+              names = src.namelist()
+              src.extractall(pkg)
+              if not any(n.startswith("UX/") for n in names):
+                  raise SystemExit("upstream zip has no UX/ directory; layout changed?")
+
+          (pkg / "AutoHotkeyARM64.exe").write_bytes(pathlib.Path("bin/AutoHotkeyARM64.exe").read_bytes())
+
+          # Launch the native build instead of the 32-bit one, byte-for-byte
+          # otherwise, so we inherit upstream's exact script.
+          install = pkg / "Install.cmd"
+          raw = install.read_bytes()
+          patched = raw.replace(b"AutoHotkey32.exe", b"AutoHotkeyARM64.exe")
+          if patched == raw:
+              raise SystemExit("Install.cmd did not reference AutoHotkey32.exe")
+          install.write_bytes(patched)
+
+          out = pathlib.Path(f"AutoHotkey_{version}_arm64.zip")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+              for path in sorted(pkg.rglob("*")):
+                  if path.is_file():
+                      z.write(path, path.relative_to(pkg).as_posix())
+          print(f"{out}: {out.stat().st_size} bytes, {len(list(pkg.rglob('*')))} entries")
+          PY
+          rm -rf pkg upstream.zip
+
+      - name: Checksums
+        run: sha256sum "AutoHotkey_${{ steps.meta.outputs.version }}_arm64.zip" | tee SHA256SUMS
+
+      - name: Upload ARM64 build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ahk-${{ matrix.tag }}-windows-arm64
+          path: |
+            AutoHotkey_${{ steps.meta.outputs.version }}_arm64.zip
+            SHA256SUMS
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ matrix.tag }}
+    needs: [check-releases, build-windows-arm64]
+    # Publish whatever the build jobs produced, so one broken tag does not hold
+    # back the releases that did build.
+    if: |
+      !cancelled() &&
+      needs.check-releases.result == 'success' &&
+      needs.check-releases.outputs.tags != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJson(needs.check-releases.outputs.tags) }}
+    steps:
+      # One artifact per job, downloaded by name. download-artifact extracts a
+      # single named artifact straight into `path`, so dist/ always holds a flat
+      # set of files. Matching a pattern instead would only nest per-artifact
+      # directories when more than one artifact matched.
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ahk-${{ matrix.tag }}-windows-arm64
+          path: dist
+
+      - name: Verify checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "::error::the ARM64 artifact for ${{ matrix.tag }} is empty"
+            exit 1
+          fi
+          sha256sum --check SHA256SUMS
+
+      - name: Create the release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          UPSTREAM: ${{ env.UPSTREAM_REPO }}
+          TAG: ${{ matrix.tag }}
+        run: |
+          set -euo pipefail
+          # Confirm the tag exists upstream; this also gates manual runs.
+          upstream=$(gh api "repos/${UPSTREAM}/releases/tags/${TAG}")
+          title=$(jq -r '.name // empty' <<<"$upstream")
+          prerelease=$(jq -r '.prerelease' <<<"$upstream")
+          latest_upstream=$(gh api "repos/${UPSTREAM}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+
+          latest=false
+          prerelease_flag=false
+          if [[ "$prerelease" == true ]]; then
+            prerelease_flag=true
+          elif [[ "$latest_upstream" == "$TAG" ]]; then
+            latest=true
+          fi
+
+          assets=$(cd dist && printf -- '- `%s`\n' *)
+          notes=$(cat <<EOF
+          Native ARM64 build of [AutoHotkey $TAG](https://github.com/$UPSTREAM/releases/tag/$TAG), compiled on a GitHub Actions \`windows-11-arm\` runner with Visual Studio's ARM64 toolset.
+
+          ARM64 support is not merged upstream yet; this build applies [AutoHotkey/AutoHotkey#360](https://github.com/AutoHotkey/AutoHotkey/pull/360), which is marked experimental. Everything except \`AutoHotkeyARM64.exe\` is taken unmodified from the upstream release.
+
+          ## Assets
+          $assets
+          EOF
+          )
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # This repository only holds automation, so point the tag at the
+            # default branch rather than at a commit that does not exist here.
+            gh release create "$TAG" --title "${title:-AutoHotkey $TAG}" --notes "$notes"
+          fi
+
+          gh release edit "$TAG" \
+            --title "${title:-AutoHotkey $TAG}" \
+            --notes "$notes" \
+            --latest="$latest" \
+            --prerelease="$prerelease_flag"
+          gh release upload "$TAG" dist/* --clobber
+          echo "Published $TAG"

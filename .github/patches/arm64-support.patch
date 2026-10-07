@@ -1,0 +1,1138 @@
+diff --git a/ARM64_PORT_NOTES.txt b/ARM64_PORT_NOTES.txt
+new file mode 100644
+index 000000000..8b7158535
+--- /dev/null
++++ b/ARM64_PORT_NOTES.txt
+@@ -0,0 +1,27 @@
++AutoHotkey v2.0.26 ARM64 Port
++
++Platform:
++Windows 11 ARM64
++
++Compiler:
++Visual Studio 2026
++
++Modified files:
++- AutoHotkeyx.vcxproj
++- source\lib_pcre\lib_pcre.vcxproj
++- source\lib\DllCall.cpp
++- source\lib\CCallback.cpp
++- source\libx64call\arm64call.asm
++
++Major fixes:
++- ARM64 project configuration
++- ARM64 DllCall support
++- ARM64 float/double parameter handling
++- ARM64 CallbackCreate support
++
++Tested:
++- Pure AHK
++- DllCall
++- CallbackCreate
++- HMPlayer (BASS/BASSWASAPI)
++- WLAN Monitor (WlanRegisterNotification)
+\ No newline at end of file
+diff --git a/AutoHotkeyx.vcxproj b/AutoHotkeyx.vcxproj
+index 98b5f4128..50825116c 100644
+--- a/AutoHotkeyx.vcxproj
++++ b/AutoHotkeyx.vcxproj
+@@ -1,4 +1,4 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <PropertyGroup>
+     <ProjectGuid>{76EFDEE3-81CF-4ADA-94DC-EA5509FF6FFC}</ProjectGuid>
+@@ -15,6 +15,10 @@
+       <Configuration>Debug</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Debug|ARM64">
++      <Configuration>Debug</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Debug(mbcs)|Win32">
+       <Configuration>Debug(mbcs)</Configuration>
+       <Platform>Win32</Platform>
+@@ -23,6 +27,10 @@
+       <Configuration>Debug(mbcs)</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Debug(mbcs)|ARM64">
++      <Configuration>Debug(mbcs)</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Debug.dll|Win32">
+       <Configuration>Debug.dll</Configuration>
+       <Platform>Win32</Platform>
+@@ -31,6 +39,10 @@
+       <Configuration>Debug.dll</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Debug.dll|ARM64">
++      <Configuration>Debug.dll</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Release|Win32">
+       <Configuration>Release</Configuration>
+       <Platform>Win32</Platform>
+@@ -39,6 +51,10 @@
+       <Configuration>Release</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Release|ARM64">
++      <Configuration>Release</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Release(mbcs)|Win32">
+       <Configuration>Release(mbcs)</Configuration>
+       <Platform>Win32</Platform>
+@@ -47,6 +63,10 @@
+       <Configuration>Release(mbcs)</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Release(mbcs)|ARM64">
++      <Configuration>Release(mbcs)</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Release.dll|Win32">
+       <Configuration>Release.dll</Configuration>
+       <Platform>Win32</Platform>
+@@ -55,6 +75,10 @@
+       <Configuration>Release.dll</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Release.dll|ARM64">
++      <Configuration>Release.dll</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Self-contained|Win32">
+       <Configuration>Self-contained</Configuration>
+       <Platform>Win32</Platform>
+@@ -63,6 +87,10 @@
+       <Configuration>Self-contained</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Self-contained|ARM64">
++      <Configuration>Self-contained</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Self-contained(debug)|Win32">
+       <Configuration>Self-contained(debug)</Configuration>
+       <Platform>Win32</Platform>
+@@ -71,6 +99,10 @@
+       <Configuration>Self-contained(debug)</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Self-contained(debug)|ARM64">
++      <Configuration>Self-contained(debug)</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+     <ProjectConfiguration Include="Self-contained(mbcs)|Win32">
+       <Configuration>Self-contained(mbcs)</Configuration>
+       <Platform>Win32</Platform>
+@@ -79,21 +111,27 @@
+       <Configuration>Self-contained(mbcs)</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Self-contained(mbcs)|ARM64">
++      <Configuration>Self-contained(mbcs)</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+   </ItemGroup>
+   <!-- import common config -->
+   <Import Project="Config.vcxproj" />
+-  <!-- platform: win32 & x64 (common) -->
+-  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32' OR '$(Platform)'=='x64'">
++  <!-- platform: win32, x64 & ARM64 (common) -->
++  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32' OR '$(Platform)'=='x64' OR '$(Platform)'=='ARM64'">
+     <ClCompile>
+       <PreprocessorDefinitions>WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+     </ClCompile>
+     <Link>
+       <SubSystem>Windows</SubSystem>
++<MinimumRequiredVersion>10.0</MinimumRequiredVersion>
+       <AdditionalDependencies>wsock32.lib;winmm.lib;version.lib;comctl32.lib;psapi.lib;wininet.lib;shlwapi.lib;uxtheme.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+       <StackReserveSize>4194304</StackReserveSize>
+       <TerminalServerAware Condition="!$(ConfigDll)">false</TerminalServerAware>
+-      <DataExecutionPrevention>false</DataExecutionPrevention>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
++      <DataExecutionPrevention>true</DataExecutionPrevention>
++<FixedBaseAddress>false</FixedBaseAddress>
++      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+       <ProgramDatabaseFile Condition="$(ConfigDll)">$(OutDir)\$(TargetName)_dll.pdb</ProgramDatabaseFile>
+     </Link>
+   </ItemDefinitionGroup>
+@@ -115,6 +153,18 @@
+       <TargetMachine>MachineX64</TargetMachine>
+     </Link>
+   </ItemDefinitionGroup>
++  <!-- platform: ARM64 / Windows on ARM -->
++  <ItemDefinitionGroup Condition="'$(Platform)'=='ARM64'">
++    <ClCompile>
++      <PreprocessorDefinitions>_WIN64;_M_ARM64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++    </ClCompile>
++    <ResourceCompile>
++      <PreprocessorDefinitions>_WIN64;_M_ARM64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++    </ResourceCompile>
++    <Link>
++      <TargetMachine>MachineARM64</TargetMachine>
++    </Link>
++  </ItemDefinitionGroup>
+   <!-- paths and basic settings -->
+   <PropertyGroup>
+     <IntDir>$(ProjectDir)temp\$(Platform)\$(Configuration)\</IntDir>
+@@ -127,6 +177,7 @@
+     <BinTypeWord Condition="'$(CharacterSet)'=='MultiByte'">ANSI</BinTypeWord>
+     <BinSuffixBits Condition="'$(Platform)'=='Win32'">32</BinSuffixBits>
+     <BinSuffixBits Condition="'$(Platform)'=='x64'">64</BinSuffixBits>
++    <BinSuffixBits Condition="'$(Platform)'=='ARM64'">ARM64</BinSuffixBits>
+     <TargetName>AutoHotkey$(BinSuffixChar)$(BinSuffixBits)</TargetName>
+   </PropertyGroup>
+   <ItemDefinitionGroup>
+@@ -185,28 +236,40 @@
+   <!-- Visual C++ 2010 should place any newly created properties in these groups -->
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(debug)|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(debug)|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(debug)|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(mbcs)|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(mbcs)|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(mbcs)|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'" />
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained|Win32'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained|x64'" />
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(debug)|Win32'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(debug)|x64'" />
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(debug)|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(mbcs)|Win32'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(mbcs)|x64'" />
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Self-contained(mbcs)|ARM64'" />
+   <!-- FILES -->
+   <ItemGroup>
+     <ClCompile Include="source\ahklib.cpp">
+@@ -343,8 +406,13 @@
+     <CustomBuild Include="source\libx64call\x64stub.asm">
+       <ExcludedFromBuild Condition="'$(Platform)'!='x64'">true</ExcludedFromBuild>
+     </CustomBuild>
++    <CustomBuild Include="source\libx64call\arm64call.asm">
++      <ExcludedFromBuild Condition="'$(Platform)'!='ARM64'">true</ExcludedFromBuild>
++      <Command Condition="'$(Platform)'=='ARM64'">armasm64 "%(FullPath)" "$(IntDir)%(Filename).obj"</Command>
++      <Outputs Condition="'$(Platform)'=='ARM64'">$(IntDir)%(Filename).obj</Outputs>
++    </CustomBuild>
+     <CustomBuild Include="source\x86call.asm">
+-      <ExcludedFromBuild Condition="'$(Platform)'=='x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Platform)'=='x64' OR '$(Platform)'=='ARM64'">true</ExcludedFromBuild>
+     </CustomBuild>
+   </ItemGroup>
+   <ItemGroup>
+diff --git a/source/lib/CCallback.cpp b/source/lib/CCallback.cpp
+index 47177452a..ae9640dea 100644
+--- a/source/lib/CCallback.cpp
++++ b/source/lib/CCallback.cpp
+@@ -33,7 +33,18 @@ struct RCCallbackFunc // Used by BIF_CallbackCreate() and related.
+ 	ULONG data4;	//59 84 C4 nn
+ 	USHORT data5;	//FF E1
+ #endif
+-#ifdef _WIN64
++#ifdef _M_ARM64
++	// ARM64 executable callback thunk, followed by data used by the thunk.
++	// Instructions:
++	//   adr x9, #0          ; x9 = address of this RCCallbackFunc
++	//   ldr x10, #12        ; x10 = stub pointer stored at offset 16
++	//   br x10              ; jump to RegisterCallbackAsmStub
++	//   nop
++	UINT64 data1;
++	UINT64 data2;
++	void (*stub)();
++	UINT_PTR (CALLBACK *callfuncptr)(UINT_PTR*, char*);
++#elif defined(_WIN64)
+ 	UINT64 data1; // 0xfffffffff9058d48
+ 	UINT64 data2; // 0x9090900000000325
+ 	void (*stub)();
+@@ -250,7 +261,21 @@ bif_impl FResult CallbackCreate(IObject *func, optl<StrArg> aOptions, optl<int>
+ 	cb.data5=0xE1FF; // jmp ecx -- FF E1 ;return
+ #endif
+ 
+-#ifdef _WIN64
++#ifdef _M_ARM64
++	// ARM64 equivalent of the x64 in-structure callback thunk.
++	// Memory layout at aRetVal/callbackfunc:
++	//   +00: adr x9, #0
++	//   +04: ldr x10, #12      ; loads cb.stub from +16
++	//   +08: br x10
++	//   +12: nop
++	//   +16: RegisterCallbackAsmStub
++	//   +24: RegisterCallbackCStub
++	// RegisterCallbackAsmStub expects x9 to point to this RCCallbackFunc.
++	cb.data1 = 0x5800006A10000009ULL;
++	cb.data2 = 0xD503201FD61F0140ULL;
++	cb.stub = RegisterCallbackAsmStub;
++	cb.callfuncptr = RegisterCallbackCStub;
++#elif defined(_WIN64)
+ 	/* Adapted from http://www.dyncall.org/
+ 		lea rax, (rip)  # copy RIP (=p?) to RAX and use address in
+ 		jmp [rax+16]    # 'entry' (stored at RIP+16) for jump
+@@ -277,6 +302,11 @@ bif_impl FResult CallbackCreate(IObject *func, optl<StrArg> aOptions, optl<int>
+ 	// protection of the page of memory in which the callback resides to allow it to execute:
+ 	DWORD dwOldProtect;
+ 	VirtualProtect(callbackfunc, sizeof(RCCallbackFunc), PAGE_EXECUTE_READWRITE, &dwOldProtect);
++#ifdef _M_ARM64
++	// ARM64 has separate instruction/data cache behaviour in practice; after
++	// generating executable code in memory, make the new instructions visible.
++	FlushInstructionCache(GetCurrentProcess(), callbackfunc, sizeof(RCCallbackFunc));
++#endif
+ 
+ 	aRetVal = (UINT_PTR)callbackfunc; // Yield the callable address as the result.
+ 	return OK;
+diff --git a/source/lib/DllCall.cpp b/source/lib/DllCall.cpp
+index baad41ca4..598beac69 100644
+--- a/source/lib/DllCall.cpp
++++ b/source/lib/DllCall.cpp
+@@ -232,12 +232,81 @@ DYNARESULT DynaCall(void *aFunction, DYNAPARM aParam[], int aParamCount, DWORD &
+ #endif // WIN32_PLATFORM
+ #ifdef _WIN64
+ 
++#ifdef _M_ARM64
++	// Windows ARM64 uses separate register banks for the first 8 integer/pointer
++	// arguments (x0-x7) and the first 8 floating-point arguments (d0-d7).
++	// The ARM64 assembler bridge expects regArgs laid out as:
++	//   [0..7]   = d0-d7 payload slots
++	//   [8..15]  = x0-x7 payload slots
++	// Arguments which overflow their register class are placed on the stack in
++	// 8-byte slots, in call order.  This is essential for calls such as
++	// BASS_ChannelSeconds2Bytes(DWORD, double), where the DWORD must go to x0
++	// and the double must go to d0, not d1.
++	DWORD_PTR regArgs[16] = {};
++	DWORD_PTR* stackArgs = NULL;
++	size_t stackArgsSize = 0;
++	int int_reg = 0, fp_reg = 0, stack_count = 0;
++
++	for (int i = 0; i < aParamCount; ++i)
++	{
++		DYNAPARM &parm = aParam[i];
++		DWORD_PTR elem = DynaParamToElement(parm);
++		bool is_float_arg = !parm.passed_by_address
++			&& (parm.type == DLL_ARG_FLOAT || parm.type == DLL_ARG_DOUBLE);
++
++		if (is_float_arg)
++		{
++			if (fp_reg < 8)
++			{
++				regArgs[fp_reg++] = elem;
++				continue;
++			}
++		}
++		else
++		{
++			if (int_reg < 8)
++			{
++				regArgs[8 + int_reg++] = elem;
++				continue;
++			}
++		}
++		++stack_count;
++	}
++
++	if (stack_count)
++	{
++		stackArgsSize = stack_count * 8;
++		stackArgs = (DWORD_PTR*) _alloca(stackArgsSize);
++		int stack_index = 0;
++		int int_reg2 = 0, fp_reg2 = 0;
++
++		for (int i = 0; i < aParamCount; ++i)
++		{
++			DYNAPARM &parm = aParam[i];
++			DWORD_PTR elem = DynaParamToElement(parm);
++			bool is_float_arg = !parm.passed_by_address
++				&& (parm.type == DLL_ARG_FLOAT || parm.type == DLL_ARG_DOUBLE);
++
++			if (is_float_arg)
++			{
++				if (fp_reg2++ < 8)
++					continue;
++			}
++			else
++			{
++				if (int_reg2++ < 8)
++					continue;
++			}
++			stackArgs[stack_index++] = elem;
++		}
++	}
++#else
+ 	int params_left = aParamCount;
+ 	DWORD_PTR regArgs[4];
+ 	DWORD_PTR* stackArgs = NULL;
+ 	size_t stackArgsSize = 0;
+ 
+-	// The first four parameters are passed in x64 through registers... like ARM :D
++	// The first four parameters are passed in x64 through registers.
+ 	for(int i = 0; (i < 4) && params_left; i++, params_left--)
+ 		regArgs[i] = DynaParamToElement(aParam[i]);
+ 
+@@ -250,6 +319,7 @@ DYNARESULT DynaCall(void *aFunction, DYNAPARM aParam[], int aParamCount, DWORD &
+ 		for(int i = 0; i < params_left; i ++)
+ 			stackArgs[i] = DynaParamToElement(aParam[i+4]);
+ 	}
++#endif
+ 
+ 	// Call the function.
+ 	__try
+diff --git a/source/lib_pcre/lib_pcre.vcxproj b/source/lib_pcre/lib_pcre.vcxproj
+index 8e8fa0803..bf95038a7 100644
+--- a/source/lib_pcre/lib_pcre.vcxproj
++++ b/source/lib_pcre/lib_pcre.vcxproj
+@@ -1,5 +1,5 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
+-<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++<?xml version='1.0' encoding='utf-8'?>
++<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build" ToolsVersion="4.0">
+   <PropertyGroup>
+     <ProjectGuid>{39037993-9571-4DF2-8E39-CD2909043574}</ProjectGuid>
+     <Keyword>Win32Proj</Keyword>
+@@ -40,10 +40,24 @@
+       <Configuration>Release</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="Debug(mbcs)|ARM64">
++      <Configuration>Debug(mbcs)</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Debug|ARM64">
++      <Configuration>Debug</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Release(mbcs)|ARM64">
++      <Configuration>Release(mbcs)</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Release|ARM64">
++      <Configuration>Release</Configuration>
++      <Platform>ARM64</Platform>
++    </ProjectConfiguration>
+   </ItemGroup>
+-  <!-- import common config -->
+   <Import Project="..\..\Config.vcxproj" />
+-  <!-- platform: win32 -->
+   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+     <ClCompile>
+       <PreprocessorDefinitions>WIN32;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+@@ -54,7 +68,11 @@
+       <PreprocessorDefinitions>WIN32;_LIB;_WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+     </ClCompile>
+   </ItemDefinitionGroup>
+-  <!-- paths and basic settings -->
++  <ItemDefinitionGroup Condition="'$(Platform)'=='ARM64'">
++    <ClCompile>
++      <PreprocessorDefinitions>WIN32;_LIB;_WIN64;_M_ARM64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++    </ClCompile>
++  </ItemDefinitionGroup>
+   <PropertyGroup>
+     <OutDir>$(SolutionDir)temp\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(SolutionDir)temp\$(Platform)\$(Configuration)\lib_pcre\</IntDir>
+@@ -70,24 +88,23 @@
+       <OutputFile>$(OutDir)lib_pcre.lib</OutputFile>
+     </Lib>
+   </ItemDefinitionGroup>
+-  <!-- Release -->
+   <ItemDefinitionGroup Condition="!$(ConfigDebug)">
+     <ClCompile>
+       <IntrinsicFunctions>true</IntrinsicFunctions>
+     </ClCompile>
+     <Lib>
+-      <!-- WHY IS THIS EXCLUDED IN DEBUG CONFIG? -->
+       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
+-      <!--<IgnoreSpecificDefaultLibraries>LibCMT;MSVCrt;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>-->
+     </Lib>
+   </ItemDefinitionGroup>
+-  <!-- Visual C++ 2010 should place any newly created properties in these groups -->
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'" />
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+     <ClCompile>
+       <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
+@@ -99,6 +116,12 @@
+       <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
+     </ClCompile>
+   </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
++    <ClCompile />
++    <ClCompile>
++      <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
++    </ClCompile>
++  </ItemDefinitionGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+     <ClCompile>
+       <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
+@@ -109,6 +132,11 @@
+       <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
+     </ClCompile>
+   </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
++    <ClCompile>
++      <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
++    </ClCompile>
++  </ItemDefinitionGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">
+     <ClCompile>
+       <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
+@@ -119,73 +147,99 @@
+       <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
+     </ClCompile>
+   </ItemDefinitionGroup>
+-  <!-- FILES -->
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">
++    <ClCompile>
++      <ProgramDataBaseFileName>$(IntDir)$(TargetName).pdb</ProgramDataBaseFileName>
++    </ClCompile>
++  </ItemDefinitionGroup>
+   <ItemGroup>
+     <ClCompile Include="pcre\pcre16_chartables.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_compile.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_config.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_exec.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_fullinfo.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_get.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_globals.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_jit_compile.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_newline.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_ord2utf16.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_refcount.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_string_utils.c" />
+     <ClCompile Include="pcre\pcre16_study.c">
+@@ -193,138 +247,184 @@
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_tables.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_ucd.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_valid_utf16.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_version.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre16_xclass.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release(mbcs)|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_chartables.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_compile.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_config.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_exec.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_fullinfo.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_get.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_globals.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_jit_compile.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_newline.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_ord2utf8.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_refcount.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_string_utils.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_study.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_tables.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_ucd.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_version.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+     <ClCompile Include="pcre\pcre_xclass.c">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">true</ExcludedFromBuild>
+     </ClCompile>
+   </ItemGroup>
+   <ItemGroup>
+diff --git a/source/libx64call/arm64call.asm b/source/libx64call/arm64call.asm
+new file mode 100644
+index 000000000..ada0099bf
+--- /dev/null
++++ b/source/libx64call/arm64call.asm
+@@ -0,0 +1,340 @@
++;///////////////////////////////////////////////////////////////////////
++;
++;   AutoHotkey v2 / Windows ARM64 dynamic call bridge
++;   Based on dyncall ARM64 MASM call core and older AutoHotkey ARM64 port ideas.
++;
++;   Provides the symbols expected by AutoHotkey v2.0.x:
++;       PerformDynaCall
++;       DynaCall
++;       GetFloatRetval
++;       GetDoubleRetval
++;       RegisterCallbackAsmStub
++;
++;   Assemble with:
++;       armasm64 /c /Foarm64call.obj arm64call_ahk_v2_dyncall_based.asm
++;
++;   Notes:
++;   - PerformDynaCall matches AHK v2 DllCall.cpp declaration:
++;       extern "C" UINT_PTR PerformDynaCall(size_t stackArgsSize,
++;           DWORD_PTR* stackArgs, DWORD_PTR* regArgs, void* aFunction);
++;
++;     Incoming ARM64 registers:
++;       x0 = stackArgsSize in bytes
++;       x1 = stackArgs pointer
++;       x2 = regArgs pointer, AHK currently prepares 4 qwords in x64 path
++;       x3 = target function pointer
++;
++;   - DynaCall matches MdFunc.cpp declaration:
++;       extern "C" UINT64 DynaCall(size_t aArgCount, UINT_PTR *aArg,
++;           void *aFunction, DWORD aFlag);
++;
++;     Incoming ARM64 registers:
++;       x0 = argument count
++;       x1 = argument array, one UINT_PTR slot per arg
++;       x2 = target function pointer
++;       x3 = flag/thiscall indicator currently ignored here
++;
++;   - CallbackCreate still needs a C++ side ARM64 patch in CCallback.cpp,
++;     because the current _WIN64 block writes x64 machine-code bytes into
++;     RCCallbackFunc. This stub exports the expected symbol and mirrors the
++;     old ARM64-port idea, but the entry thunk layout must match CCallback.cpp.
++;
++;///////////////////////////////////////////////////////////////////////
++
++        AREA .text, CODE, ARM64
++
++        EXPORT PerformDynaCall
++        EXPORT DynaCall
++        EXPORT GetFloatRetval
++        EXPORT GetDoubleRetval
++        EXPORT RegisterCallbackAsmStub
++
++; ----------------------------------------------------------------------
++; UINT_PTR PerformDynaCall(size_t stackArgsSize,
++;                          DWORD_PTR* stackArgs,
++;                          DWORD_PTR* regArgs,
++;                          void* aFunction)
++;
++; AHK v2 x64-oriented C++ path supplies 4 register slots and remaining
++; args in stackArgs. ARM64 has x0-x7 and d0-d7. To avoid changing C++ for
++; this first step, we load x0-x3/d0-d3 from regArgs and, if present, lift
++; the first 4 stack argument slots into x4-x7/d4-d7. The remaining stack
++; args begin after those lifted slots.
++;
++; This makes DllCall with up to 8 integer/pointer args behave more like
++; native Windows ARM64 without immediately rewriting DllCall.cpp.
++; ----------------------------------------------------------------------
++
++PerformDynaCall PROC
++        ; Prolog.
++        stp     x29, x30, [sp, #-16]!
++        mov     x29, sp
++
++        ; Preserve callee-saved registers we use.
++        stp     x19, x20, [sp, #-16]!
++        stp     x21, x22, [sp, #-16]!
++        stp     x23, x24, [sp, #-16]!
++        stp     x25, x26, [sp, #-16]!
++
++        ; Incoming AHK v2 signature:
++        ;   x0 = stackArgsSize in bytes
++        ;   x1 = stackArgs pointer
++        ;   x2 = regArgs pointer
++        ;   x3 = target function pointer
++        ;
++        ; For ARM64, DllCall.cpp must provide regArgs in dyncall layout:
++        ;   regArgs[0..7]  = payload for d0-d7
++        ;   regArgs[8..15] = payload for x0-x7
++        mov     x19, x0              ; stackArgsSize
++        mov     x20, x1              ; stackArgs
++        mov     x21, x2              ; regArgs
++        mov     x22, x3              ; target function
++
++        ; Allocate callee stack area, 16-byte aligned.
++        add     x23, x19, #15
++        and     x23, x23, #-16       ; aligned stack bytes
++        sub     sp, sp, x23
++
++        ; Copy stack arguments in 8-byte slots.
++        mov     x24, xzr             ; offset
++        cbz     x19, pf_stack_done
++pf_stack_loop
++        cmp     x24, x19
++        b.ge    pf_stack_done
++        ldr     x25, [x20, x24]
++        str     x25, [sp, x24]
++        add     x24, x24, #8
++        b       pf_stack_loop
++pf_stack_done
++
++        ; Load floating-point argument registers d0-d7.
++        ldr     d0, [x21, #0]
++        ldr     d1, [x21, #8]
++        ldr     d2, [x21, #16]
++        ldr     d3, [x21, #24]
++        ldr     d4, [x21, #32]
++        ldr     d5, [x21, #40]
++        ldr     d6, [x21, #48]
++        ldr     d7, [x21, #56]
++
++        ; Load integer/pointer argument registers x0-x7.
++        ldr     x0, [x21, #64]
++        ldr     x1, [x21, #72]
++        ldr     x2, [x21, #80]
++        ldr     x3, [x21, #88]
++        ldr     x4, [x21, #96]
++        ldr     x5, [x21, #104]
++        ldr     x6, [x21, #112]
++        ldr     x7, [x21, #120]
++
++        ; Call target.
++        blr     x22
++
++        ; Save floating-point return value immediately.
++        ldr     x10, =AhkArm64FloatRetval
++        str     s0, [x10]
++        ldr     x10, =AhkArm64DoubleRetval
++        str     d0, [x10]
++
++        ; Restore stack and callee-saved regs.
++        mov     sp, x29
++        sub     sp, sp, #64
++        ldp     x25, x26, [sp], #16
++        ldp     x23, x24, [sp], #16
++        ldp     x21, x22, [sp], #16
++        ldp     x19, x20, [sp], #16
++        ldp     x29, x30, [sp], #16
++        ret
++        ENDP
++
++; ----------------------------------------------------------------------
++; UINT64 DynaCall(size_t aArgCount, UINT_PTR *aArg, void *aFunction, DWORD aFlag)
++;
++; Used by MdFunc.cpp for calls to known internal native functions.
++; This maps arg[0..7] to x0..x7 and d0..d7 and places arg[8+] on stack.
++; ----------------------------------------------------------------------
++
++DynaCall PROC
++        stp     x29, x30, [sp, #-16]!
++        mov     x29, sp
++
++        stp     x19, x20, [sp, #-16]!
++        stp     x21, x22, [sp, #-16]!
++        stp     x23, x24, [sp, #-16]!
++        stp     x25, x26, [sp, #-16]!
++
++        mov     x19, x0              ; arg count
++        mov     x20, x1              ; arg array
++        mov     x21, x2              ; target function
++
++        ; stackCount = max(argCount - 8, 0)
++        cmp     x19, #8
++        sub     x22, x19, #8
++        csel    x22, x22, xzr, hi
++        lsl     x23, x22, #3         ; stack bytes
++        add     x24, x23, #15
++        and     x24, x24, #-16       ; aligned stack bytes
++        sub     sp, sp, x24
++
++        ; Copy arg[8+] to callee stack area.
++        mov     x25, xzr             ; offset bytes
++        cbz     x23, md_stack_done
++md_stack_loop
++        cmp     x25, x23
++        b.ge    md_stack_done
++        add     x26, x20, #64        ; &arg[8]
++        ldr     x4, [x26, x25]
++        str     x4, [sp, x25]
++        add     x25, x25, #8
++        b       md_stack_loop
++md_stack_done
++
++        ; Load x0-x7/d0-d7, absent args become zero.
++        mov     x0, xzr
++        mov     x1, xzr
++        mov     x2, xzr
++        mov     x3, xzr
++        mov     x4, xzr
++        mov     x5, xzr
++        mov     x6, xzr
++        mov     x7, xzr
++        fmov    d0, xzr
++        fmov    d1, xzr
++        fmov    d2, xzr
++        fmov    d3, xzr
++        fmov    d4, xzr
++        fmov    d5, xzr
++        fmov    d6, xzr
++        fmov    d7, xzr
++
++        cmp     x19, #1
++        b.lo    md_regs_done
++        ldr     x0, [x20, #0]
++        ldr     d0, [x20, #0]
++        cmp     x19, #2
++        b.lo    md_regs_done
++        ldr     x1, [x20, #8]
++        ldr     d1, [x20, #8]
++        cmp     x19, #3
++        b.lo    md_regs_done
++        ldr     x2, [x20, #16]
++        ldr     d2, [x20, #16]
++        cmp     x19, #4
++        b.lo    md_regs_done
++        ldr     x3, [x20, #24]
++        ldr     d3, [x20, #24]
++        cmp     x19, #5
++        b.lo    md_regs_done
++        ldr     x4, [x20, #32]
++        ldr     d4, [x20, #32]
++        cmp     x19, #6
++        b.lo    md_regs_done
++        ldr     x5, [x20, #40]
++        ldr     d5, [x20, #40]
++        cmp     x19, #7
++        b.lo    md_regs_done
++        ldr     x6, [x20, #48]
++        ldr     d6, [x20, #48]
++        cmp     x19, #8
++        b.lo    md_regs_done
++        ldr     x7, [x20, #56]
++        ldr     d7, [x20, #56]
++md_regs_done
++
++        blr     x21
++
++        ; Save floating-point return value immediately for MdFunc callers too.
++        ldr     x10, =AhkArm64FloatRetval
++        str     s0, [x10]
++        ldr     x10, =AhkArm64DoubleRetval
++        str     d0, [x10]
++
++        mov     sp, x29
++        sub     sp, sp, #64
++        ldp     x25, x26, [sp], #16
++        ldp     x23, x24, [sp], #16
++        ldp     x21, x22, [sp], #16
++        ldp     x19, x20, [sp], #16
++        ldp     x29, x30, [sp], #16
++        ret
++        ENDP
++
++; ----------------------------------------------------------------------
++; Floating-point return helpers.
++; Like x64 version, these intentionally do nothing. C++ declares their
++; return type so the compiler reads the current floating return register.
++; ----------------------------------------------------------------------
++
++GetFloatRetval PROC
++        ldr     x10, =AhkArm64FloatRetval
++        ldr     s0, [x10]
++        ret
++        ENDP
++
++GetDoubleRetval PROC
++        ldr     x10, =AhkArm64DoubleRetval
++        ldr     d0, [x10]
++        ret
++        ENDP
++
++; ----------------------------------------------------------------------
++; RegisterCallbackAsmStub
++;
++; Exported so the project links. This mirrors the old AHK ARM64-port idea:
++; save x0-x7, pass a parameter buffer and callback structure address to the
++; C stub. However CCallback.cpp must generate an ARM64-compatible entry thunk
++; which puts the RCCallbackFunc* in x9 before jumping here.
++;
++; Expected on entry after C++ patch:
++;       x9 = RCCallbackFunc* cb
++;       cb.callfuncptr/stub layout must be verified in CCallback.cpp.
++; ----------------------------------------------------------------------
++
++RegisterCallbackAsmStub PROC
++        stp     x29, x30, [sp, #-16]!
++        mov     x29, sp
++
++        ; Reserve 64 bytes for x0-x7 and 64 bytes scratch/shadow, aligned.
++        sub     sp, sp, #128
++
++        stp     x0, x1, [sp, #0]
++        stp     x2, x3, [sp, #16]
++        stp     x4, x5, [sp, #32]
++        stp     x6, x7, [sp, #48]
++
++        ; x0 = UINT_PTR* params
++        ; x1 = char* address / RCCallbackFunc* cb
++        mov     x0, sp
++        mov     x1, x9
++
++        ; In AHK v2 x64 layout, callfuncptr follows stub pointer within RCCallbackFunc.
++        ; For ARM64 C++ patch, keep callfuncptr at offset 24 if using:
++        ;   UINT64 data1;
++        ;   UINT64 data2;
++        ;   void (*stub)();
++        ;   UINT_PTR (CALLBACK *callfuncptr)(UINT_PTR*, char*);
++        ldr     x11, [x9, #24]
++        blr     x11
++
++        mov     sp, x29
++        ldp     x29, x30, [sp], #16
++        ret
++        ENDP
++
++
++; ----------------------------------------------------------------------
++; Storage for floating-point return values.
++; Must be writable data, not code, because PerformDynaCall/DynaCall store d0
++; immediately after the target call. Thread-local would be nicer long-term,
++; but this is sufficient to verify ARM64 Double/Float return handling and
++; matches AHK's mostly single-call synchronous use here.
++; ----------------------------------------------------------------------
++
++        AREA .data, DATA, ALIGN=3
++AhkArm64FloatRetval
++        DCD     0
++        DCD     0
++AhkArm64DoubleRetval
++        DCQ     0
++
++        END
