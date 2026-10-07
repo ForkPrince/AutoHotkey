@@ -460,9 +460,9 @@ jobs:
 
           assets=$(cd dist && printf -- '- `%s`\n' *)
           notes=$(cat <<EOF
-          Native ARM64 build of [AutoHotkey $TAG](https://github.com/$UPSTREAM/releases/tag/$TAG), compiled on a GitHub Actions \`windows-11-arm\` runner with Visual Studio's ARM64 toolset.
+          ARM64 build of AutoHotkey $TAG, built on a GitHub \`windows-11-arm\` runner.
 
-          ARM64 support is not merged upstream yet; this build applies [AutoHotkey/AutoHotkey#360](https://github.com/AutoHotkey/AutoHotkey/pull/360), which is marked experimental. Everything except \`AutoHotkeyARM64.exe\` is taken unmodified from the upstream release.
+          AutoHotkey has no ARM64 build of its own, so this one uses [pull request #360](https://github.com/AutoHotkey/AutoHotkey/pull/360), which is experimental.
 
           ## Assets
           $assets
